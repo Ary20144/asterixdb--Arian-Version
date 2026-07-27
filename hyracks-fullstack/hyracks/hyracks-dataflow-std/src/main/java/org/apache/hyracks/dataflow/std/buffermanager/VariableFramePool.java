@@ -177,23 +177,12 @@ public class VariableFramePool implements IFramePool {
     }
 
     @Override
-    //    public void reset() {
-    //        removeEmptySpot(buffers);
-    //        Collections.sort(buffers, sizeByteBufferComparator);
-    //        used.clear();
-    //    }
-    //  trying to remove memory blockage
+
     public void reset() {
 
         removeEmptySpot(buffers);
         Collections.sort(buffers, sizeByteBufferComparator);
         used.clear();
-        // EXPERIMENT: physically release frames until we're under the (possibly lowered) cap
-        while (allocateMem > memBudget && !buffers.isEmpty()) {
-            ByteBuffer dropped = buffers.remove(buffers.size() - 1); // largest, list is sorted
-            allocateMem -= dropped.capacity();
-            ctx.deallocateFrames(dropped.capacity());
-        }
     }
 
     private static void removeEmptySpot(List<ByteBuffer> buffers) {
