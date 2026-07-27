@@ -38,6 +38,7 @@ public class DeallocatableFramePool implements IDeallocatableFramePool {
         this.memBudget = memBudgetInBytes;
         this.allocated = 0;
         this.buffers = new LinkedList<>();
+        //when victimized, check to see all budget is allocated or not
     }
 
     @Override

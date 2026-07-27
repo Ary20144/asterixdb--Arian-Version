@@ -21,6 +21,8 @@ package org.apache.hyracks.dataflow.std.join;
 import java.io.DataOutput;
 import java.nio.ByteBuffer;
 import java.util.BitSet;
+//to simulate broker
+import java.util.Random;
 
 import org.apache.hyracks.api.comm.IFrame;
 import org.apache.hyracks.api.comm.IFrameWriter;
@@ -42,8 +44,12 @@ import org.apache.hyracks.dataflow.std.buffermanager.EnumFreeSlotPolicy;
 import org.apache.hyracks.dataflow.std.buffermanager.FrameFreeSlotPolicyFactory;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFrameMemoryManager;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFramePool;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class NestedLoopJoin {
+    //creating the logger for test:
+    private static final Logger LOGGER = LogManager.getLogger();
     // Note: Min memory budget should be less than {@code AbstractJoinPOperator.MIN_FRAME_LIMIT_FOR_JOIN}
     // Inner join: 1 frame for the outer input side, 1 frame for the inner input side, 1 frame for the output
     private static final int MIN_FRAME_BUDGET_INNER_JOIN = 3;
@@ -59,6 +65,7 @@ public class NestedLoopJoin {
     private final IFrame outBuffer;
     private final IFrame innerBuffer;
     private final VariableFrameMemoryManager outerBufferMngr;
+
     private final RunFileWriter runFileWriter;
     private final boolean isLeftOuter;
     private final ArrayTupleBuilder missingTupleBuilder;
@@ -67,6 +74,29 @@ public class NestedLoopJoin {
     private final boolean isReversed;
     private final BufferInfo tempInfo = new BufferInfo(null, -1, -1);
     private final BitSet outerMatchLOJ;
+
+
+
+    //added flag to check victim
+    private final VariableFramePool framePool;
+    private int drainCount = 0;
+    //broker simulation state
+    private final long brokerSeed = System.nanoTime() ^ System.identityHashCode(this);
+    private final Random brokerRnd = new Random(brokerSeed);
+    private int victimCount = 0; // checkpoint-2 victimizations
+    private int grantCount = 0;
+    private int rejectCount = 0;
+    private int originalBudgetBytes;// growth cap reference
+    private int frameInterval = 100;
+    private int frameCounter = 0;
+    private int victimPercent = 20;    // chance of being victimized per consultation (0..100)
+    private int grantPercent = 20;     // chance a grow request is granted (0..100)
+    // The framePool holds ONLY the outer (R) cache. Of the 3-frame minimum above, the inner (S) reader
+    // and the output buffer are allocated OUTSIDE the pool in the constructor — so the pool's own floor
+    // is the remaining 1 outer frame. Derived, not hardcoded, so it tracks the minimum if it ever changes.
+    private static final int MIN_POOL_FRAMES = MIN_FRAME_BUDGET_INNER_JOIN - 2;
+
+
 
     public NestedLoopJoin(IHyracksJobletContext jobletContext, FrameTupleAccessor accessorOuter,
             FrameTupleAccessor accessorInner, int memBudgetInFrames, boolean isLeftOuter,
@@ -90,9 +120,14 @@ public class NestedLoopJoin {
         }
         int outerBufferMngrMemBudgetInFrames = memBudgetInFrames - minMemBudgetInFrames + 1;
         int outerBufferMngrMemBudgetInBytes = jobletContext.getInitialFrameSize() * outerBufferMngrMemBudgetInFrames;
-        this.outerBufferMngr = new VariableFrameMemoryManager(
-                new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes), FrameFreeSlotPolicyFactory
-                        .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
+        //        this.outerBufferMngr = new VariableFrameMemoryManager(
+        //                new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes), FrameFreeSlotPolicyFactory
+        //                        .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
+        //changed for testing memory changes
+        this.framePool = new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes);
+        this.originalBudgetBytes = outerBufferMngrMemBudgetInBytes;
+        this.outerBufferMngr = new VariableFrameMemoryManager(framePool, FrameFreeSlotPolicyFactory
+                .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
 
         this.isLeftOuter = isLeftOuter;
         if (isLeftOuter) {
@@ -137,20 +172,77 @@ public class NestedLoopJoin {
         tpComparator = comparator;
     }
 
-    public void join(ByteBuffer outerBuffer, IFrameWriter writer) throws HyracksDataException {
+
+
+    /**
+     added for testing behaviour of a randomly assigning broker
+     */
+
+    private boolean coinSaysVictim() {
+        return brokerRnd.nextInt(100) < victimPercent;
+    }
+
+    /** Victim action: release half of the OUTER (R) pool's current budget, if the pool keeps its floor. */
+    private void releaseHalfOfOuterBudget() {
+        int current = framePool.getMemoryBudgetBytes();
+        int half = current / 2;
+        if (current - half >= MIN_POOL_FRAMES * framePool.getMinFrameSize()) {
+            int got = framePool.takeUnusedMemory(half);
+            victimCount++;
+            LOGGER.info("NLJ-BROKER drain#{} VICTIM releasing half of outer budget: asked={} took={} capNow={}",
+                    drainCount, half, got, framePool.getMemoryBudgetBytes());
+        } else {
+            LOGGER.info("NLJ-BROKER drain#{} VICTIM-DECLINED cap={} at pool floor", drainCount, current);
+        }
+    }
+
+    /** Grow request: double (capped at 4x original) or rejected. Returns whether granted. */
+    private boolean askBrokerForMore() {
+        int current = framePool.getMemoryBudgetBytes();
+        if (brokerRnd.nextInt(100) < grantPercent && current * 2 <= originalBudgetBytes * 4) {
+            framePool.updateBudget(current * 2);
+            grantCount++;
+            LOGGER.info("NLJ-BROKER drain#{} GRANTED {} -> {}", drainCount, current, current * 2);
+            return true;
+        }
+        rejectCount++;
+        LOGGER.info("NLJ-BROKER drain#{} REJECTED cap stays {}", drainCount, current);
+        return false;
+    }
+
+        public void join(ByteBuffer outerBuffer, IFrameWriter writer) throws HyracksDataException {
         accessorOuter.reset(outerBuffer);
         if (accessorOuter.getTupleCount() <= 0) {
             return;
         }
-        if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
-            multiBlockJoin(writer);
-            outerBufferMngr.reset();
-            if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
-                throw new HyracksDataException("The given outer frame of size:" + outerBuffer.capacity()
-                        + " is too big to cache in the buffer. Please choose a larger buffer memory size");
+            frameCounter++;
+            // CHECKPOINT 1: R still filling — give-up side ONLY
+            if (frameCounter % frameInterval == 0 && coinSaysVictim()) {
+                releaseHalfOfOuterBudget();
             }
+            if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
+                // CHECKPOINT 2: out of memory — victim check FIRST
+                if (coinSaysVictim()) {
+                    multiBlockJoin(writer);
+                    drainCount++;
+                    outerBufferMngr.reset();
+                    releaseHalfOfOuterBudget();
+                } else {
+                    // not victim: ask for more BEFORE spilling — a grant makes the drain unnecessary
+                    if (askBrokerForMore() && outerBufferMngr.insertFrame(outerBuffer) >= 0) {
+                        return;                          // grant absorbed the frame: S-scan avoided
+                    }
+                    multiBlockJoin(writer);              // rejected -> spill as usual
+                    drainCount++;
+                    outerBufferMngr.reset();
+                }
+                if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
+                    throw new HyracksDataException("The given outer frame of size:" + outerBuffer.capacity()
+                            + " is too big to cache in the buffer. Please choose a larger buffer memory size");
+                }
+            }
+
         }
-    }
 
     private void multiBlockJoin(IFrameWriter writer) throws HyracksDataException {
         int outerBufferFrameCount = outerBufferMngr.getNumFrames();
@@ -250,6 +342,10 @@ public class NestedLoopJoin {
             runFileWriter.eraseClosed();
         }
         appender.write(writer, true);
+        LOGGER.info("NLJ-BROKER SUMMARY drains={} victims={} granted={} rejected={} finalCap={} totalBytesGivenUp={}",
+                drainCount, victimCount, grantCount, rejectCount, framePool.getMemoryBudgetBytes(),
+                framePool.getGivenBytes());
+
     }
 
     public void releaseMemory() throws HyracksDataException {

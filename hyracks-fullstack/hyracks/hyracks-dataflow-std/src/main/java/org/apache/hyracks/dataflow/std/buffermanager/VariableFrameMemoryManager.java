@@ -51,6 +51,9 @@ public class VariableFrameMemoryManager implements IFrameBufferManager {
     private int numPhysicalFrames = 0;
     private int numLogicalFrames = 0;
 
+    //    //added for checkpoint 1 testing
+    //    public volatile int takeRequestBytes = 32768;
+
     public VariableFrameMemoryManager(IFramePool framePool, IFrameFreeSlotPolicy freeSlotPolicy) {
         this.framePool = framePool;
         this.freeSlotPolicy = freeSlotPolicy;
@@ -100,6 +103,12 @@ public class VariableFrameMemoryManager implements IFrameBufferManager {
     @Override
     public int insertFrame(ByteBuffer frame) throws HyracksDataException {
         int frameSize = frame.capacity();
+        //the following 4 lines have been added to take memory away mid copy
+        //        int req = takeRequestBytes;
+        //        int effectiveCap = framePool.getMemoryBudgetBytes() - (req > 0 ? req : 0);
+        //        if ((numLogicalFrames * frameSize) + frameSize > effectiveCap) {
+        //            return -1;
+        //        }
         int physicalFrameId = findAvailableFrame(frameSize);
         if (physicalFrameId < 0) {
             return -1;

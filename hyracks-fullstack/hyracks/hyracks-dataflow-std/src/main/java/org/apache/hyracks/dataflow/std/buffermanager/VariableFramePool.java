@@ -34,7 +34,12 @@ public class VariableFramePool implements IFramePool {
 
     private final IHyracksFrameMgrContext ctx;
     private final int minFrameSize;
-    private final int memBudget;
+    //  private final int memBudget;
+    private int memBudget;
+
+    //aded to test memory getting taken off
+    private long givenBytes = 0; // ack ledger
+    //   private int inUseMem = 0;                   // bytes handed out since last reset
 
     private int allocateMem;
     private ArrayList<ByteBuffer> buffers; // the unused slots were sorted by size increasingly.
@@ -44,8 +49,7 @@ public class VariableFramePool implements IFramePool {
      * The constructor of the VariableFramePool.
      *
      * @param ctx
-     * @param memBudgetInBytes
-     *            the given memory budgets to allocate the frames. If it less than 0, it will be treated as unlimited budgets
+     * @param memBudgetInBytes the given memory budgets to allocate the frames. If it less than 0, it will be treated as unlimited budgets
      */
     public VariableFramePool(IHyracksFrameMgrContext ctx, int memBudgetInBytes) {
         this.ctx = ctx;
@@ -72,6 +76,10 @@ public class VariableFramePool implements IFramePool {
         return memBudget;
     }
 
+    public long getGivenBytes() {
+        return givenBytes;
+    }
+
     @Override
     public ByteBuffer allocateFrame(int frameSize) throws HyracksDataException {
         int frameId = findExistingFrame(frameSize);
@@ -82,7 +90,6 @@ public class VariableFramePool implements IFramePool {
             return createNewFrame(frameSize);
         }
         return mergeExistingFrames(frameSize);
-
     }
 
     private boolean haveEnoughFreeSpace(int frameSize) {
@@ -170,10 +177,23 @@ public class VariableFramePool implements IFramePool {
     }
 
     @Override
+    //    public void reset() {
+    //        removeEmptySpot(buffers);
+    //        Collections.sort(buffers, sizeByteBufferComparator);
+    //        used.clear();
+    //    }
+    //  trying to remove memory blockage
     public void reset() {
+
         removeEmptySpot(buffers);
         Collections.sort(buffers, sizeByteBufferComparator);
         used.clear();
+        // EXPERIMENT: physically release frames until we're under the (possibly lowered) cap
+        while (allocateMem > memBudget && !buffers.isEmpty()) {
+            ByteBuffer dropped = buffers.remove(buffers.size() - 1); // largest, list is sorted
+            allocateMem -= dropped.capacity();
+            ctx.deallocateFrames(dropped.capacity());
+        }
     }
 
     private static void removeEmptySpot(List<ByteBuffer> buffers) {
@@ -202,4 +222,31 @@ public class VariableFramePool implements IFramePool {
             return o1.capacity() < o2.capacity() ? -1 : 1;
         }
     };
+
+    public void updateBudget(int newBudgetBytes) {
+        this.memBudget = newBudgetBytes;
+    }
+
+    /**
+     * Give up memory now: lowers the cap and immediately frees currently-unused frames.
+     * Frames in use are untouched. Returns the bytes actually taken off the cap (may be
+     * less than requested, or 0 if the pool is already at its 1-frame floor).
+     */
+    public int takeUnusedMemory(int requestBytes) {
+        int unused = buffers.size() - used.cardinality();
+        int index = used.nextClearBit(0);
+        int toBeReleasedInFrames = Math.min(requestBytes, unused * minFrameSize) / minFrameSize;
+        int releasedInBytes = 0;
+        for (int i = 0; i < toBeReleasedInFrames && index < buffers.size(); i++) {
+            if (buffers.get(index) != null) {
+                releasedInBytes += buffers.get(index).capacity();
+                deAllocateFrame(index);
+            }
+            index = used.nextClearBit(index + 1);                // [5] advance PAST the current slot
+        }
+        memBudget -= releasedInBytes;
+        givenBytes += releasedInBytes;                           // actual, not the ask
+        return releasedInBytes;
+    }
+
 }
