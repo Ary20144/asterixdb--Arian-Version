@@ -139,4 +139,22 @@ public class VariableFrameMemoryManager implements IFrameBufferManager {
         freeSlotPolicy.close();
         framePool.close();
     }
+
+    /**
+     * Bucketed release: detach the LAST n logical frames from this block and hand their
+     * physical buffers to the caller (who has already spilled their contents and will free
+     * them via the pool). Assumes logical frame == whole physical frame (uniform full-size
+     * frames, as in NLJ where every inserted outer frame fills one pool frame — same
+     * assumption as the CP3 spill path). Only call at scan time, when no inserts are in
+     * flight; surviving frames keep their indices 0..getNumFrames()-1.
+     */
+    public int removeTrailingFrames(int n, List<ByteBuffer> removedBuffers) {
+        int k = Math.min(n, numLogicalFrames);
+        for (int i = 0; i < k; i++) {
+            numLogicalFrames--;
+            numPhysicalFrames--;
+            removedBuffers.add(physicalFrames.get(numPhysicalFrames).physicalFrame);
+        }
+        return k;
+    }
 }

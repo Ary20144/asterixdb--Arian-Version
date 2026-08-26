@@ -231,11 +231,42 @@ public class VariableFramePool implements IFramePool {
                 releasedInBytes += buffers.get(index).capacity();
                 deAllocateFrame(index);
             }
-            index = used.nextClearBit(index + 1);                // [5] advance PAST the current slot
+            index = used.nextClearBit(index + 1); // [5] advance PAST the current slot
         }
         memBudget -= releasedInBytes;
-        givenBytes += releasedInBytes;                           // actual, not the ask
+        givenBytes += releasedInBytes; // actual, not the ask
         return releasedInBytes;
+    }
+
+    /**
+     * Bucketed give-back, tier 2: surrender budget that was never allocated into frames.
+     * Lowers the cap without touching any frame (nothing physical to free). Caller is
+     * responsible for the floor check. Returns the bytes actually taken off the cap.
+     */
+    public int shrinkUnallocated(int requestBytes) {
+        int headroom = memBudget - allocateMem;
+        int released = Math.max(0, Math.min(requestBytes, headroom));
+        memBudget -= released;
+        givenBytes += released;
+        return released;
+    }
+
+    /**
+     * Bucketed give-back, tier 3: permanently release one specific IN-USE frame whose data
+     * the caller has already preserved (spilled). Same tombstone convention as merge:
+     * slot nulled, bit stays set, reset() sweeps it. Cap and ledger updated by the actual
+     * capacity freed. Returns bytes freed (0 if the buffer is not in this pool).
+     */
+    public int releaseSpecificFrame(ByteBuffer buffer) {
+        for (int i = 0; i < buffers.size(); i++) {
+            if (buffers.get(i) == buffer) {
+                int freed = deAllocateFrame(i);
+                memBudget -= freed;
+                givenBytes += freed;
+                return freed;
+            }
+        }
+        return 0;
     }
 
 }
