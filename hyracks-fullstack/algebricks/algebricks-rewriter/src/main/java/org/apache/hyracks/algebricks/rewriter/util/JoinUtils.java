@@ -40,7 +40,6 @@ import org.apache.hyracks.algebricks.core.algebra.functions.AlgebricksBuiltinFun
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractBinaryJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.LogicalPropertiesVisitor;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.VariableUtilities;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractJoinPOperator.JoinPartitioningType;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.HybridHashJoinPOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.InMemoryHashJoinPOperator;
@@ -67,64 +66,66 @@ public class JoinUtils {
         List<LogicalVariable> varsLeft = op.getInputs().get(0).getValue().getSchema();
         List<LogicalVariable> varsRight = op.getInputs().get(1).getValue().getSchema();
         ILogicalExpression conditionExpr = op.getCondition().getValue();
-        if (isHashJoinCondition(conditionExpr, varsLeft, varsRight, sideLeft, sideRight)) {
-            List<LogicalVariable> scanVarsLeft = new LinkedList<>();
-            List<LogicalVariable> scanVarsRight = new LinkedList<>();
-            VariableUtilities.getLiveVariablesInDescendantDataScans(op.getInputs().get(0).getValue(), scanVarsLeft);
-            VariableUtilities.getLiveVariablesInDescendantDataScans(op.getInputs().get(1).getValue(), scanVarsRight);
-            BroadcastSide broadcastSide = getBroadcastJoinSide(conditionExpr, scanVarsLeft, scanVarsRight, context);
-            if (broadcastSide == null) {
-                BuildSide buildSide = getHashJoinBuildSide(conditionExpr, scanVarsLeft, scanVarsRight, context);
-                if (buildSide == null) {
-                    setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
-                } else {
-                    switch (buildSide) {
-                        case RIGHT:
-                            setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
-                            break;
-                        case LEFT:
-                            if (op.getJoinKind() == AbstractBinaryJoinOperator.JoinKind.INNER) {
-                                Mutable<ILogicalOperator> opRef0 = op.getInputs().get(0);
-                                Mutable<ILogicalOperator> opRef1 = op.getInputs().get(1);
-                                ILogicalOperator tmp = opRef0.getValue();
-                                opRef0.setValue(opRef1.getValue());
-                                opRef1.setValue(tmp);
-                                setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideRight, sideLeft, context);
-                            } else {
-                                setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
-                            }
-                            break;
-                        default:
-                            // This should never happen
-                            throw new IllegalStateException(buildSide.toString());
-                    }
-                }
-            } else {
-                switch (broadcastSide) {
-                    case RIGHT:
-                        setHashJoinOp(op, JoinPartitioningType.BROADCAST, sideLeft, sideRight, context);
-                        break;
-                    case LEFT:
-                        if (op.getJoinKind() == AbstractBinaryJoinOperator.JoinKind.INNER) {
-                            Mutable<ILogicalOperator> opRef0 = op.getInputs().get(0);
-                            Mutable<ILogicalOperator> opRef1 = op.getInputs().get(1);
-                            ILogicalOperator tmp = opRef0.getValue();
-                            opRef0.setValue(opRef1.getValue());
-                            opRef1.setValue(tmp);
-                            setHashJoinOp(op, JoinPartitioningType.BROADCAST, sideRight, sideLeft, context);
-                        } else {
-                            setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
-                        }
-                        break;
-                    default:
-                        // This should never happen
-                        throw new IllegalStateException(broadcastSide.toString());
-                }
-            }
-        } else {
-            warnIfCrossProduct(conditionExpr, op.getSourceLocation(), context);
-            setNestedLoopJoinOp(op);
-        }
+        //        if (isHashJoinCondition(conditionExpr, varsLeft, varsRight, sideLeft, sideRight)) {
+        //            List<LogicalVariable> scanVarsLeft = new LinkedList<>();
+        //            List<LogicalVariable> scanVarsRight = new LinkedList<>();
+        //            VariableUtilities.getLiveVariablesInDescendantDataScans(op.getInputs().get(0).getValue(), scanVarsLeft);
+        //            VariableUtilities.getLiveVariablesInDescendantDataScans(op.getInputs().get(1).getValue(), scanVarsRight);
+        //            BroadcastSide broadcastSide = getBroadcastJoinSide(conditionExpr, scanVarsLeft, scanVarsRight, context);
+        //            if (broadcastSide == null) {
+        //                BuildSide buildSide = getHashJoinBuildSide(conditionExpr, scanVarsLeft, scanVarsRight, context);
+        //                if (buildSide == null) {
+        //                    setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
+        //                } else {
+        //                    switch (buildSide) {
+        //                        case RIGHT:
+        //                            setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
+        //                            break;
+        //                        case LEFT:
+        //                            if (op.getJoinKind() == AbstractBinaryJoinOperator.JoinKind.INNER) {
+        //                                Mutable<ILogicalOperator> opRef0 = op.getInputs().get(0);
+        //                                Mutable<ILogicalOperator> opRef1 = op.getInputs().get(1);
+        //                                ILogicalOperator tmp = opRef0.getValue();
+        //                                opRef0.setValue(opRef1.getValue());
+        //                                opRef1.setValue(tmp);
+        //                                setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideRight, sideLeft, context);
+        //                            } else {
+        //                                setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
+        //                            }
+        //                            break;
+        //                        default:
+        //                            // This should never happen
+        //                            throw new IllegalStateException(buildSide.toString());
+        //                    }
+        //                }
+        //            } else {
+        //                switch (broadcastSide) {
+        //                    case RIGHT:
+        //                        setHashJoinOp(op, JoinPartitioningType.BROADCAST, sideLeft, sideRight, context);
+        //                        break;
+        //                    case LEFT:
+        //                        if (op.getJoinKind() == AbstractBinaryJoinOperator.JoinKind.INNER) {
+        //                            Mutable<ILogicalOperator> opRef0 = op.getInputs().get(0);
+        //                            Mutable<ILogicalOperator> opRef1 = op.getInputs().get(1);
+        //                            ILogicalOperator tmp = opRef0.getValue();
+        //                            opRef0.setValue(opRef1.getValue());
+        //                            opRef1.setValue(tmp);
+        //                            setHashJoinOp(op, JoinPartitioningType.BROADCAST, sideRight, sideLeft, context);
+        //                        } else {
+        //                            setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
+        //                        }
+        //                        break;
+        //                    default:
+        //                        // This should never happen
+        //                        throw new IllegalStateException(broadcastSide.toString());
+        //                }
+        //            }
+        //        } else {
+        //            warnIfCrossProduct(conditionExpr, op.getSourceLocation(), context);
+        //what condition triggers?
+        //comment line 70 if if you want to always trigger
+        setNestedLoopJoinOp(op);
+        //        }
     }
 
     private static void setNestedLoopJoinOp(AbstractBinaryJoinOperator op) {

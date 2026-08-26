@@ -42,8 +42,11 @@ import org.apache.hyracks.dataflow.std.buffermanager.EnumFreeSlotPolicy;
 import org.apache.hyracks.dataflow.std.buffermanager.FrameFreeSlotPolicyFactory;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFrameMemoryManager;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFramePool;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class NestedLoopJoin {
+    private static final Logger LOGGER = LogManager.getLogger();
     // Note: Min memory budget should be less than {@code AbstractJoinPOperator.MIN_FRAME_LIMIT_FOR_JOIN}
     // Inner join: 1 frame for the outer input side, 1 frame for the inner input side, 1 frame for the output
     private static final int MIN_FRAME_BUDGET_INNER_JOIN = 3;
@@ -67,6 +70,15 @@ public class NestedLoopJoin {
     private final boolean isReversed;
     private final BufferInfo tempInfo = new BufferInfo(null, -1, -1);
     private final BitSet outerMatchLOJ;
+
+    // Static-run instrumentation: counters and log lines only, no change to join behavior
+    private final int frameSize;
+    private final int outerBudgetBytes;
+    private long sFrameReads = 0; // inner (S) frames read back from the run file, summed over all passes
+    private long matchCount = 0; // joined pairs appended; true result cardinality even when the query LIMITs output
+    private long outerFramesIn = 0; // outer (R) frames received into the buffer
+    private int spillCount = 0; // times the outer buffer filled and forced a pass over the inner relation
+    private int passCount = 0; // total passes over the inner relation (spill-triggered + final)
 
     public NestedLoopJoin(IHyracksJobletContext jobletContext, FrameTupleAccessor accessorOuter,
             FrameTupleAccessor accessorInner, int memBudgetInFrames, boolean isLeftOuter,
@@ -93,6 +105,8 @@ public class NestedLoopJoin {
         this.outerBufferMngr = new VariableFrameMemoryManager(
                 new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes), FrameFreeSlotPolicyFactory
                         .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
+        this.frameSize = jobletContext.getInitialFrameSize();
+        this.outerBudgetBytes = outerBufferMngrMemBudgetInBytes;
 
         this.isLeftOuter = isLeftOuter;
         if (isLeftOuter) {
@@ -142,7 +156,12 @@ public class NestedLoopJoin {
         if (accessorOuter.getTupleCount() <= 0) {
             return;
         }
+        outerFramesIn++;
         if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
+            spillCount++;
+            LOGGER.info("NLJ-STATIC spill {}: outer buffer full ({} frames / {} bytes); starting pass over the inner relation",
+                    spillCount, outerBufferMngr.getNumFrames(),
+                    (long) outerBufferMngr.getNumFrames() * frameSize);
             multiBlockJoin(writer);
             outerBufferMngr.reset();
             if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
@@ -157,6 +176,7 @@ public class NestedLoopJoin {
         if (outerBufferFrameCount == 0) {
             return;
         }
+        passCount++;
         RunFileReader runFileReader = runFileWriter.createReader();
         try {
             runFileReader.open();
@@ -164,6 +184,7 @@ public class NestedLoopJoin {
                 outerMatchLOJ.clear();
             }
             while (runFileReader.nextFrame(innerBuffer)) {
+                sFrameReads++;
                 int outerTupleRunningCount = 0;
                 for (int i = 0; i < outerBufferFrameCount; i++) {
                     BufferInfo outerBufferInfo = outerBufferMngr.getFrame(i, tempInfo);
@@ -200,6 +221,7 @@ public class NestedLoopJoin {
                 int c = tpComparator.compare(accessorOuter, i, accessorInner, j);
                 if (c == 0) {
                     matchFound = true;
+                    matchCount++;
                     appendToResults(i, j, writer);
                 }
             }
@@ -250,6 +272,11 @@ public class NestedLoopJoin {
             runFileWriter.eraseClosed();
         }
         appender.write(writer, true);
+        LOGGER.info(
+                "NLJ-STATIC SUMMARY spills={} passesOverInner={} sFrameReads={} matches={} outerFramesIn={} "
+                        + "outerBytesIn={} innerRunFileBytes={} outerBudgetBytes={} outerBudgetFrames={}",
+                spillCount, passCount, sFrameReads, matchCount, outerFramesIn, outerFramesIn * frameSize,
+                runFileWriter.getFileSize(), outerBudgetBytes, outerBudgetBytes / frameSize);
     }
 
     public void releaseMemory() throws HyracksDataException {
