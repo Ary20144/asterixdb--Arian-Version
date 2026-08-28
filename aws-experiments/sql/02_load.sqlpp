@@ -1,0 +1,10 @@
+-- Data loading. __DATA_DIR__ and __NC__ are substituted by bin/setup_data.sh
+-- from config.sh; do not run this file verbatim.
+
+USE tpcds;
+
+LOAD DATASET customer USING localfs
+  (("path"="__NC__://__DATA_DIR__/customer.json"),("format"="json"));
+
+LOAD DATASET store_returns USING localfs
+  (("path"="__NC__://__DATA_DIR__/store_returns.json"),("format"="json"));
