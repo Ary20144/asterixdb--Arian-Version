@@ -1,0 +1,775 @@
+{
+	"requestID": "34339291-7164-4afd-b89d-eab2c55190bc",
+	"signature": {
+		"*": "*"
+	},
+	"results": [ {"c":{"id":"524e773a-2b9f-0c0a-3c81-5953020fbd69","c_customer_sk":"4451","c_customer_id":"AAAAAAAADGBBAAAA","c_current_cdemo_sk":"1890096","c_current_hdemo_sk":"1614","c_current_addr_sk":"43132","c_first_shipto_date_sk":"2450089","c_first_sales_date_sk":"2450059","c_salutation":"Mrs.","c_first_name":"Christine","c_last_name":"Pierce","c_preferred_cust_flag":"N","c_birth_day":15,"c_birth_month":10,"c_birth_year":1988,"c_birth_country":"JORDAN","c_login":null,"c_email_address":"Christine.Pierce@heMq.org","c_last_review_date_sk":"2452322"},"sr":{"id":"f7177160-2e80-8421-a91a-c325ee743ae9","sr_returned_date_sk":"2452065","sr_return_time_sk":"40372","sr_item_sk":"13803","sr_customer_sk":"4451","sr_cdemo_sk":"178772","sr_hdemo_sk":"175","sr_addr_sk":"29625","sr_store_sk":"2","sr_reason_sk":"26","sr_ticket_number":"10","sr_return_quantity":48,"sr_return_amt":3960.48,"sr_return_tax":0.0,"sr_return_amt_inc_tax":3960.48,"sr_fee":39.22,"sr_return_ship_cost":65.76,"sr_refunded_cash":1980.24,"sr_reversed_charge":1960.43,"sr_store_credit":19.81,"sr_net_loss":104.98}} ]
+	,
+	"plans":{"optimizedLogicalPlan": {
+   "operator" : "distribute-result",
+   "expressions" : [ "$$33" ],
+   "operatorId" : "1.1",
+   "runtime-id" : "ODID:3",
+   "min-time" : 2.495,
+   "max-time" : 2.495,
+   "physical-operator" : "DISTRIBUTE_RESULT",
+   "execution-mode" : "UNPARTITIONED",
+   "optimizer-estimates" : {
+      "cardinality" : 0.0,
+      "doc-size" : 0.0,
+      "op-cost" : 0.0,
+      "total-cost" : 0.0
+   },
+   "inputs" : [ {
+      "operator" : "exchange",
+      "operatorId" : "1.2",
+      "runtime-id" : "CDID:8",
+      "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+      "execution-mode" : "UNPARTITIONED",
+      "optimizer-estimates" : {
+         "cardinality" : 0.0,
+         "doc-size" : 0.0,
+         "op-cost" : 0.0,
+         "total-cost" : 0.0
+      },
+      "inputs" : [ {
+         "operator" : "limit",
+         "value" : "1",
+         "operatorId" : "1.3",
+         "runtime-id" : "ODID:8.0",
+         "min-time" : 0.9771,
+         "max-time" : 0.9771,
+         "min-cardinality" : 1,
+         "max-cardinality" : 1,
+         "total-cardinality" : 1,
+         "min-tuple-size" : 1304,
+         "max-tuple-size" : 1304,
+         "avg-tuple-size" : 1304.0,
+         "frame-count" : 1,
+         "avg-tuples-per-frame" : 1.0,
+         "tuple-bytes" : "1 KB",
+         "physical-operator" : "STREAM_LIMIT",
+         "execution-mode" : "UNPARTITIONED",
+         "optimizer-estimates" : {
+            "cardinality" : 0.0,
+            "doc-size" : 0.0,
+            "op-cost" : 0.0,
+            "total-cost" : 0.0
+         },
+         "inputs" : [ {
+            "operator" : "exchange",
+            "operatorId" : "1.4",
+            "runtime-id" : "CDID:7",
+            "min-time" : 0.0,
+            "max-time" : 0.0,
+            "min-cardinality" : 1,
+            "max-cardinality" : 1,
+            "total-cardinality" : 1,
+            "physical-operator" : "RANDOM_MERGE_EXCHANGE",
+            "execution-mode" : "PARTITIONED",
+            "optimizer-estimates" : {
+               "cardinality" : 0.0,
+               "doc-size" : 0.0,
+               "op-cost" : 0.0,
+               "total-cost" : 0.0
+            },
+            "inputs" : [ {
+               "operator" : "assign",
+               "variables" : [ "$$33" ],
+               "expressions" : [ "{\"c\": $$c, \"sr\": $$sr}" ],
+               "project-variables" : [ "$$33" ],
+               "operatorId" : "1.5",
+               "runtime-id" : "ODID:6.2",
+               "min-time" : 0.9396,
+               "max-time" : 0.9396,
+               "min-cardinality" : 1,
+               "max-cardinality" : 1,
+               "total-cardinality" : 1,
+               "min-tuple-size" : 1304,
+               "max-tuple-size" : 1304,
+               "avg-tuple-size" : 1304.0,
+               "frame-count" : 1,
+               "avg-tuples-per-frame" : 1.0,
+               "tuple-bytes" : "1 KB",
+               "physical-operator" : "ASSIGN",
+               "execution-mode" : "PARTITIONED",
+               "optimizer-estimates" : {
+                  "cardinality" : 0.0,
+                  "doc-size" : 0.0,
+                  "op-cost" : 0.0,
+                  "total-cost" : 0.0
+               },
+               "inputs" : [ {
+                  "operator" : "limit",
+                  "value" : "1",
+                  "operatorId" : "1.6",
+                  "runtime-id" : "ODID:6.1",
+                  "min-time" : 2.4351,
+                  "max-time" : 2.4351,
+                  "min-cardinality" : 1,
+                  "max-cardinality" : 1,
+                  "total-cardinality" : 1,
+                  "min-tuple-size" : 1293,
+                  "max-tuple-size" : 1293,
+                  "avg-tuple-size" : 1293.0,
+                  "frame-count" : 1,
+                  "avg-tuples-per-frame" : 1.0,
+                  "tuple-bytes" : "1 KB",
+                  "physical-operator" : "STREAM_LIMIT",
+                  "execution-mode" : "PARTITIONED",
+                  "optimizer-estimates" : {
+                     "cardinality" : 0.0,
+                     "doc-size" : 0.0,
+                     "op-cost" : 0.0,
+                     "total-cost" : 0.0
+                  },
+                  "inputs" : [ {
+                     "operator" : "project",
+                     "variables" : [ "$$c", "$$sr" ],
+                     "operatorId" : "1.7",
+                     "runtime-id" : "ODID:6.0",
+                     "min-time" : 36.4172,
+                     "max-time" : 36.4172,
+                     "min-cardinality" : 277498,
+                     "max-cardinality" : 277498,
+                     "total-cardinality" : 277498,
+                     "min-tuple-size" : 1113,
+                     "max-tuple-size" : 1335,
+                     "avg-tuple-size" : 1292.8138473070076,
+                     "frame-count" : 11100,
+                     "avg-tuples-per-frame" : 24.99981981981982,
+                     "tuple-bytes" : "342 MB",
+                     "physical-operator" : "STREAM_PROJECT",
+                     "execution-mode" : "PARTITIONED",
+                     "optimizer-estimates" : {
+                        "cardinality" : 0.0,
+                        "doc-size" : 0.0,
+                        "op-cost" : 0.0,
+                        "total-cost" : 0.0
+                     },
+                     "inputs" : [ {
+                        "operator" : "exchange",
+                        "operatorId" : "1.8",
+                        "runtime-id" : "CDID:6",
+                        "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                        "execution-mode" : "PARTITIONED",
+                        "optimizer-estimates" : {
+                           "cardinality" : 0.0,
+                           "doc-size" : 0.0,
+                           "op-cost" : 0.0,
+                           "total-cost" : 0.0
+                        },
+                        "inputs" : [ {
+                           "operator" : "join",
+                           "condition" : "eq($$36, $$37)",
+                           "operatorId" : "1.9",
+                           "runtime-id" : "ODID:2",
+                           "activity-stats" : [ {
+                              "name" : "org.apache.hyracks.dataflow.std.join.NestedLoopJoinOperatorDescriptor$JoinCacheActivityNode$1@2b8a138",
+                              "id" : "ANID:0",
+                              "min-time" : 165.2259,
+                              "max-time" : 165.2259
+                           }, {
+                              "name" : "org.apache.hyracks.dataflow.std.join.NestedLoopJoinOperatorDescriptor$NestedLoopJoinActivityNode$1@7a64a163",
+                              "id" : "ANID:1",
+                              "min-time" : 1438024.396,
+                              "max-time" : 1438024.396,
+                              "min-cardinality" : 277498,
+                              "max-cardinality" : 277498,
+                              "total-cardinality" : 277498,
+                              "min-tuple-size" : 1135,
+                              "max-tuple-size" : 1357,
+                              "avg-tuple-size" : 1314.593478151194,
+                              "frame-count" : 11530,
+                              "avg-tuples-per-frame" : 24.067476149176063,
+                              "tuple-bytes" : "347 MB"
+                           } ],
+                           "physical-operator" : "NESTED_LOOP",
+                           "execution-mode" : "PARTITIONED",
+                           "optimizer-estimates" : {
+                              "cardinality" : 0.0,
+                              "doc-size" : 0.0,
+                              "op-cost" : 0.0,
+                              "total-cost" : 0.0
+                           },
+                           "inputs" : [ {
+                              "operator" : "exchange",
+                              "operatorId" : "1.10",
+                              "runtime-id" : "CDID:2",
+                              "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                              "execution-mode" : "PARTITIONED",
+                              "optimizer-estimates" : {
+                                 "cardinality" : 0.0,
+                                 "doc-size" : 0.0,
+                                 "op-cost" : 0.0,
+                                 "total-cost" : 0.0
+                              },
+                              "inputs" : [ {
+                                 "operator" : "assign",
+                                 "variables" : [ "$$37" ],
+                                 "expressions" : [ "$$c.getField(\"c_customer_sk\")" ],
+                                 "operatorId" : "1.11",
+                                 "runtime-id" : "ODID:4.1",
+                                 "min-time" : 18.7254,
+                                 "max-time" : 18.7254,
+                                 "min-cardinality" : 100000,
+                                 "max-cardinality" : 100000,
+                                 "total-cardinality" : 100000,
+                                 "min-tuple-size" : 534,
+                                 "max-tuple-size" : 687,
+                                 "avg-tuple-size" : 648.07161,
+                                 "frame-count" : 2005,
+                                 "avg-tuples-per-frame" : 49.87531172069825,
+                                 "tuple-bytes" : "61 MB",
+                                 "physical-operator" : "ASSIGN",
+                                 "execution-mode" : "PARTITIONED",
+                                 "optimizer-estimates" : {
+                                    "cardinality" : 0.0,
+                                    "doc-size" : 0.0,
+                                    "op-cost" : 0.0,
+                                    "total-cost" : 0.0
+                                 },
+                                 "inputs" : [ {
+                                    "operator" : "project",
+                                    "variables" : [ "$$c" ],
+                                    "operatorId" : "1.12",
+                                    "runtime-id" : "ODID:4.0",
+                                    "min-time" : 4.3769,
+                                    "max-time" : 4.3769,
+                                    "min-cardinality" : 100000,
+                                    "max-cardinality" : 100000,
+                                    "total-cardinality" : 100000,
+                                    "min-tuple-size" : 523,
+                                    "max-tuple-size" : 676,
+                                    "avg-tuple-size" : 637.18266,
+                                    "frame-count" : 1974,
+                                    "avg-tuples-per-frame" : 50.65856129685917,
+                                    "tuple-bytes" : "60 MB",
+                                    "physical-operator" : "STREAM_PROJECT",
+                                    "execution-mode" : "PARTITIONED",
+                                    "optimizer-estimates" : {
+                                       "cardinality" : 0.0,
+                                       "doc-size" : 0.0,
+                                       "op-cost" : 0.0,
+                                       "total-cost" : 0.0
+                                    },
+                                    "inputs" : [ {
+                                       "operator" : "exchange",
+                                       "operatorId" : "1.13",
+                                       "runtime-id" : "CDID:1",
+                                       "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                                       "execution-mode" : "PARTITIONED",
+                                       "optimizer-estimates" : {
+                                          "cardinality" : 0.0,
+                                          "doc-size" : 0.0,
+                                          "op-cost" : 0.0,
+                                          "total-cost" : 0.0
+                                       },
+                                       "inputs" : [ {
+                                          "operator" : "data-scan",
+                                          "variables" : [ "$$34", "$$c" ],
+                                          "data-source" : "tpcds.customer",
+                                          "operatorId" : "1.14",
+                                          "runtime-id" : "ODID:0",
+                                          "min-time" : 98.9986,
+                                          "max-time" : 98.9986,
+                                          "min-cardinality" : 100000,
+                                          "max-cardinality" : 100000,
+                                          "total-cardinality" : 100000,
+                                          "min-tuple-size" : 544,
+                                          "max-tuple-size" : 697,
+                                          "avg-tuple-size" : 658.18266,
+                                          "frame-count" : 2041,
+                                          "avg-tuples-per-frame" : 48.99559039686429,
+                                          "tuple-bytes" : "62 MB",
+                                          "physical-operator" : "DATASOURCE_SCAN",
+                                          "execution-mode" : "PARTITIONED",
+                                          "optimizer-estimates" : {
+                                             "cardinality" : 0.0,
+                                             "doc-size" : 0.0,
+                                             "op-cost" : 0.0,
+                                             "total-cost" : 0.0
+                                          },
+                                          "inputs" : [ {
+                                             "operator" : "exchange",
+                                             "operatorId" : "1.15",
+                                             "runtime-id" : "CDID:0",
+                                             "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                                             "execution-mode" : "PARTITIONED",
+                                             "optimizer-estimates" : {
+                                                "cardinality" : 0.0,
+                                                "doc-size" : 0.0,
+                                                "op-cost" : 0.0,
+                                                "total-cost" : 0.0
+                                             },
+                                             "inputs" : [ {
+                                                "operator" : "empty-tuple-source",
+                                                "operatorId" : "1.16",
+                                                "runtime-id" : "ODID:9.0",
+                                                "physical-operator" : "EMPTY_TUPLE_SOURCE",
+                                                "execution-mode" : "PARTITIONED",
+                                                "optimizer-estimates" : {
+                                                   "cardinality" : 0.0,
+                                                   "doc-size" : 0.0,
+                                                   "op-cost" : 0.0,
+                                                   "total-cost" : 0.0
+                                                }
+                                             } ]
+                                          } ]
+                                       } ]
+                                    } ]
+                                 } ]
+                              } ]
+                           }, {
+                              "operator" : "exchange",
+                              "operatorId" : "1.17",
+                              "runtime-id" : "CDID:5",
+                              "min-time" : 0.0,
+                              "max-time" : 0.0,
+                              "min-cardinality" : 287514,
+                              "max-cardinality" : 287514,
+                              "total-cardinality" : 287514,
+                              "physical-operator" : "BROADCAST_EXCHANGE",
+                              "execution-mode" : "PARTITIONED",
+                              "optimizer-estimates" : {
+                                 "cardinality" : 0.0,
+                                 "doc-size" : 0.0,
+                                 "op-cost" : 0.0,
+                                 "total-cost" : 0.0
+                              },
+                              "inputs" : [ {
+                                 "operator" : "assign",
+                                 "variables" : [ "$$36" ],
+                                 "expressions" : [ "$$sr.getField(\"sr_customer_sk\")" ],
+                                 "operatorId" : "1.18",
+                                 "runtime-id" : "ODID:7.1",
+                                 "min-time" : 61.6674,
+                                 "max-time" : 61.6674,
+                                 "min-cardinality" : 287514,
+                                 "max-cardinality" : 287514,
+                                 "total-cardinality" : 287514,
+                                 "min-tuple-size" : 548,
+                                 "max-tuple-size" : 672,
+                                 "avg-tuple-size" : 664.1670596910063,
+                                 "frame-count" : 5925,
+                                 "avg-tuples-per-frame" : 48.525569620253165,
+                                 "tuple-bytes" : "182 MB",
+                                 "physical-operator" : "ASSIGN",
+                                 "execution-mode" : "PARTITIONED",
+                                 "optimizer-estimates" : {
+                                    "cardinality" : 0.0,
+                                    "doc-size" : 0.0,
+                                    "op-cost" : 0.0,
+                                    "total-cost" : 0.0
+                                 },
+                                 "inputs" : [ {
+                                    "operator" : "project",
+                                    "variables" : [ "$$sr" ],
+                                    "operatorId" : "1.19",
+                                    "runtime-id" : "ODID:7.0",
+                                    "min-time" : 14.3224,
+                                    "max-time" : 14.3224,
+                                    "min-cardinality" : 287514,
+                                    "max-cardinality" : 287514,
+                                    "total-cardinality" : 287514,
+                                    "min-tuple-size" : 543,
+                                    "max-tuple-size" : 661,
+                                    "avg-tuple-size" : 653.4824252036423,
+                                    "frame-count" : 5848,
+                                    "avg-tuples-per-frame" : 49.164500683994525,
+                                    "tuple-bytes" : "179 MB",
+                                    "physical-operator" : "STREAM_PROJECT",
+                                    "execution-mode" : "PARTITIONED",
+                                    "optimizer-estimates" : {
+                                       "cardinality" : 0.0,
+                                       "doc-size" : 0.0,
+                                       "op-cost" : 0.0,
+                                       "total-cost" : 0.0
+                                    },
+                                    "inputs" : [ {
+                                       "operator" : "exchange",
+                                       "operatorId" : "1.20",
+                                       "runtime-id" : "CDID:4",
+                                       "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                                       "execution-mode" : "PARTITIONED",
+                                       "optimizer-estimates" : {
+                                          "cardinality" : 0.0,
+                                          "doc-size" : 0.0,
+                                          "op-cost" : 0.0,
+                                          "total-cost" : 0.0
+                                       },
+                                       "inputs" : [ {
+                                          "operator" : "data-scan",
+                                          "variables" : [ "$$35", "$$sr" ],
+                                          "data-source" : "tpcds.store_returns",
+                                          "operatorId" : "1.21",
+                                          "runtime-id" : "ODID:1",
+                                          "min-time" : 262.5277,
+                                          "max-time" : 262.5277,
+                                          "min-cardinality" : 287514,
+                                          "max-cardinality" : 287514,
+                                          "total-cardinality" : 287514,
+                                          "min-tuple-size" : 564,
+                                          "max-tuple-size" : 682,
+                                          "avg-tuple-size" : 674.4824252036423,
+                                          "frame-count" : 5993,
+                                          "avg-tuples-per-frame" : 47.97497079926581,
+                                          "tuple-bytes" : "184 MB",
+                                          "physical-operator" : "DATASOURCE_SCAN",
+                                          "execution-mode" : "PARTITIONED",
+                                          "optimizer-estimates" : {
+                                             "cardinality" : 0.0,
+                                             "doc-size" : 0.0,
+                                             "op-cost" : 0.0,
+                                             "total-cost" : 0.0
+                                          },
+                                          "inputs" : [ {
+                                             "operator" : "exchange",
+                                             "operatorId" : "1.22",
+                                             "runtime-id" : "CDID:3",
+                                             "physical-operator" : "ONE_TO_ONE_EXCHANGE",
+                                             "execution-mode" : "PARTITIONED",
+                                             "optimizer-estimates" : {
+                                                "cardinality" : 0.0,
+                                                "doc-size" : 0.0,
+                                                "op-cost" : 0.0,
+                                                "total-cost" : 0.0
+                                             },
+                                             "inputs" : [ {
+                                                "operator" : "empty-tuple-source",
+                                                "operatorId" : "1.23",
+                                                "runtime-id" : "ODID:5.0",
+                                                "physical-operator" : "EMPTY_TUPLE_SOURCE",
+                                                "execution-mode" : "PARTITIONED",
+                                                "optimizer-estimates" : {
+                                                   "cardinality" : 0.0,
+                                                   "doc-size" : 0.0,
+                                                   "op-cost" : 0.0,
+                                                   "total-cost" : 0.0
+                                                }
+                                             } ]
+                                          } ]
+                                       } ]
+                                    } ]
+                                 } ]
+                              } ]
+                           } ]
+                        } ]
+                     } ]
+                  } ]
+               } ]
+            } ]
+         } ]
+      } ]
+   } ]
+}},
+	"status": "success",
+	"metrics": {
+		"elapsedTime": "1438.818191417s",
+		"executionTime": "1438.810691625s",
+		"compileTime": "48.539416ms",
+		"queueWaitTime": "0ns",
+		"resultCount": 1,
+		"resultSize": 1069,
+		"processedObjects": 387514,
+		"bufferCacheHitRatio": "0.00%",
+		"bufferCachePageReadCount": 8028
+	},
+	"profile" : {
+		"job-id" : "JID:0.22",
+		"create-time" : 1788059958678,
+		"start-time" : 1788059958678,
+		"queued-time" : 0,
+		"end-time" : 0,
+		"counters" : [ ],
+		"joblets" : [
+			{
+				"node-id" : "asterix_nc1",
+				"counters" : [ ],
+				"tasks" : [
+					{
+						"activity-id" : "ANID:ODID:2:0",
+						"partition" : 0,
+						"attempt" : 0,
+						"partition-send-profile" : [ ],
+						"counters" : [
+							{
+								"name" : "ANID:ODID:2:0 - org.apache.hyracks.dataflow.std.join.NestedLoopJoinOperatorDescriptor$JoinCacheActivityNode$1@2b8a138",
+								"run-time" : 165.2259,
+								"runtime-id" : "ODID:2"
+							}
+						]
+					},
+					{
+						"activity-id" : "ANID:ODID:5:0",
+						"partition" : 0,
+						"attempt" : 0,
+						"partition-send-profile" : [
+							{
+								"partition-id" : {
+									"job-id" : "JID:0.22",
+									"connector-id" : "CDID:5",
+									"sender-index" : 0,
+									"receiver-index" : 0
+								},
+								"open-time" : 1788059958693,
+								"close-time" : 1788059959182,
+								"cardinality" : 287514,
+								"offset" : 1788059958698,
+								"frame-times" : [
+									0,
+									21,
+									34,
+									46,
+									56,
+									66,
+									82,
+									91,
+									101,
+									113,
+									124,
+									135,
+									144,
+									153,
+									166,
+									178,
+									190,
+									202,
+									211,
+									224,
+									235,
+									245,
+									255,
+									264,
+									276,
+									288,
+									297,
+									304,
+									313,
+									324,
+									332,
+									354,
+									368,
+									379,
+									388,
+									397,
+									405,
+									414,
+									421,
+									430,
+									438,
+									447,
+									456,
+									465,
+									474,
+									482
+								],
+								"resolution" : 128
+							}
+						],
+						"counters" : [
+							{
+								"name" : "ANID:ODID:5:0 - Empty Tuple Source",
+								"run-time" : 1.2423,
+								"runtime-id" : "ODID:5",
+								"cardinality-out" : 1,
+								"avg-tuple-size" : 0.0,
+								"min-tuple-size" : 0,
+								"max-tuple-size" : 0,
+								"tuple-bytes" : 0,
+								"frames-processed" : 1,
+								"avg-tuples-per-frame" : 1.0
+							},
+							{
+								"name" : "ANID:ODID:1:0 - Index Search",
+								"run-time" : 262.5277,
+								"runtime-id" : "ODID:1",
+								"pages-read" : 5992,
+								"pages-read-cold" : 5992,
+								"cardinality-out" : 287514,
+								"avg-tuple-size" : 674.4824252036423,
+								"min-tuple-size" : 564,
+								"max-tuple-size" : 682,
+								"tuple-bytes" : 193923140,
+								"frames-processed" : 5993,
+								"avg-tuples-per-frame" : 47.97497079926581
+							},
+							{
+								"name" : "ANID:ODID:7:0.0 - Subplan 1524bc4f-6c1a-4d9e-b51b-edeec6da0826",
+								"run-time" : 14.3224,
+								"runtime-id" : "ODID:7.0",
+								"cardinality-out" : 287514,
+								"avg-tuple-size" : 653.4824252036423,
+								"min-tuple-size" : 543,
+								"max-tuple-size" : 661,
+								"tuple-bytes" : 187885346,
+								"frames-processed" : 5848,
+								"avg-tuples-per-frame" : 49.164500683994525
+							},
+							{
+								"name" : "ANID:ODID:7:0.1 - Subplan 8f2be165-9ebf-43f6-81e3-ac6d374a67af",
+								"run-time" : 61.6674,
+								"runtime-id" : "ODID:7.1",
+								"cardinality-out" : 287514,
+								"avg-tuple-size" : 664.1670596910063,
+								"min-tuple-size" : 548,
+								"max-tuple-size" : 672,
+								"tuple-bytes" : 190957328,
+								"frames-processed" : 5925,
+								"avg-tuples-per-frame" : 48.525569620253165
+							}
+						]
+					},
+					{
+						"activity-id" : "ANID:ODID:8:0",
+						"partition" : 0,
+						"attempt" : 0,
+						"partition-send-profile" : [ ],
+						"counters" : [
+							{
+								"name" : "ANID:ODID:8:0.0 - Subplan f446e15d-b47c-4a9c-867e-a233f26fd2a4",
+								"run-time" : 0.9771,
+								"runtime-id" : "ODID:8.0",
+								"cardinality-out" : 1,
+								"avg-tuple-size" : 1304.0,
+								"min-tuple-size" : 1304,
+								"max-tuple-size" : 1304,
+								"tuple-bytes" : 1304,
+								"frames-processed" : 1,
+								"avg-tuples-per-frame" : 1.0
+							},
+							{
+								"name" : "ANID:ODID:3:0 - Result Writer",
+								"run-time" : 2.495,
+								"runtime-id" : "ODID:3"
+							}
+						]
+					},
+					{
+						"activity-id" : "ANID:ODID:9:0",
+						"partition" : 0,
+						"attempt" : 0,
+						"partition-send-profile" : [
+							{
+								"partition-id" : {
+									"job-id" : "JID:0.22",
+									"connector-id" : "CDID:7",
+									"sender-index" : 0,
+									"receiver-index" : 0
+								},
+								"open-time" : 1788059959189,
+								"close-time" : 1788061397371,
+								"cardinality" : 1,
+								"offset" : 1788061397371,
+								"frame-times" : [
+									0
+								],
+								"resolution" : 1
+							}
+						],
+						"counters" : [
+							{
+								"name" : "ANID:ODID:9:0 - Empty Tuple Source",
+								"run-time" : 0.2175,
+								"runtime-id" : "ODID:9",
+								"cardinality-out" : 1,
+								"avg-tuple-size" : 0.0,
+								"min-tuple-size" : 0,
+								"max-tuple-size" : 0,
+								"tuple-bytes" : 0,
+								"frames-processed" : 1,
+								"avg-tuples-per-frame" : 1.0
+							},
+							{
+								"name" : "ANID:ODID:0:0 - Index Search",
+								"run-time" : 98.9986,
+								"runtime-id" : "ODID:0",
+								"pages-read" : 2036,
+								"pages-read-cold" : 2036,
+								"cardinality-out" : 100000,
+								"avg-tuple-size" : 658.18266,
+								"min-tuple-size" : 544,
+								"max-tuple-size" : 697,
+								"tuple-bytes" : 65818266,
+								"frames-processed" : 2041,
+								"avg-tuples-per-frame" : 48.99559039686428
+							},
+							{
+								"name" : "ANID:ODID:4:0.0 - Subplan bec37864-f32c-4f24-abf5-20f3d0680149",
+								"run-time" : 4.3769,
+								"runtime-id" : "ODID:4.0",
+								"cardinality-out" : 100000,
+								"avg-tuple-size" : 637.18266,
+								"min-tuple-size" : 523,
+								"max-tuple-size" : 676,
+								"tuple-bytes" : 63718266,
+								"frames-processed" : 1974,
+								"avg-tuples-per-frame" : 50.65856129685917
+							},
+							{
+								"name" : "ANID:ODID:4:0.1 - Subplan 5a830e56-2e75-4a21-91e1-2b0e1bc01038",
+								"run-time" : 18.7254,
+								"runtime-id" : "ODID:4.1",
+								"cardinality-out" : 100000,
+								"avg-tuple-size" : 648.07161,
+								"min-tuple-size" : 534,
+								"max-tuple-size" : 687,
+								"tuple-bytes" : 64807161,
+								"frames-processed" : 2005,
+								"avg-tuples-per-frame" : 49.87531172069826
+							},
+							{
+								"name" : "ANID:ODID:2:1 - org.apache.hyracks.dataflow.std.join.NestedLoopJoinOperatorDescriptor$NestedLoopJoinActivityNode$1@7a64a163",
+								"run-time" : 1438024.396,
+								"runtime-id" : "ODID:2",
+								"cardinality-out" : 277498,
+								"avg-tuple-size" : 1314.593478151194,
+								"min-tuple-size" : 1135,
+								"max-tuple-size" : 1357,
+								"tuple-bytes" : 364797061,
+								"frames-processed" : 11530,
+								"avg-tuples-per-frame" : 24.067476149176063
+							},
+							{
+								"name" : "ANID:ODID:6:0.2 - Subplan 1479992b-19fa-4281-b9eb-4dab5ce48e84",
+								"run-time" : 0.9396,
+								"runtime-id" : "ODID:6.2",
+								"cardinality-out" : 1,
+								"avg-tuple-size" : 1304.0,
+								"min-tuple-size" : 1304,
+								"max-tuple-size" : 1304,
+								"tuple-bytes" : 1304,
+								"frames-processed" : 1,
+								"avg-tuples-per-frame" : 1.0
+							},
+							{
+								"name" : "ANID:ODID:6:0.1 - Subplan 2fa936ac-8da4-4005-8393-bf82d98675e7",
+								"run-time" : 2.4351,
+								"runtime-id" : "ODID:6.1",
+								"cardinality-out" : 1,
+								"avg-tuple-size" : 1293.0,
+								"min-tuple-size" : 1293,
+								"max-tuple-size" : 1293,
+								"tuple-bytes" : 1293,
+								"frames-processed" : 1,
+								"avg-tuples-per-frame" : 1.0
+							},
+							{
+								"name" : "ANID:ODID:6:0.0 - Subplan a20085c9-8db1-4e7e-aa22-ec3956f963d1",
+								"run-time" : 36.4172,
+								"runtime-id" : "ODID:6.0",
+								"cardinality-out" : 277498,
+								"avg-tuple-size" : 1292.8138473070076,
+								"min-tuple-size" : 1113,
+								"max-tuple-size" : 1335,
+								"tuple-bytes" : 358753257,
+								"frames-processed" : 11100,
+								"avg-tuples-per-frame" : 24.99981981981982
+							}
+						]
+					}
+				]
+			}
+		]
+	}
+}
