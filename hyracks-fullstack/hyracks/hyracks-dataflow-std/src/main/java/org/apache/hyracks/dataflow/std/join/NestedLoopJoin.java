@@ -23,8 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-//to simulate broker
-import java.util.Random;
 
 import org.apache.hyracks.api.comm.IFrame;
 import org.apache.hyracks.api.comm.IFrameWriter;
@@ -41,9 +39,13 @@ import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
 import org.apache.hyracks.dataflow.common.io.RunFileReader;
 import org.apache.hyracks.dataflow.common.io.RunFileWriter;
+import org.apache.hyracks.dataflow.std.buffermanager.AdaptiveVariableFrameMemoryManager;
 import org.apache.hyracks.dataflow.std.buffermanager.BufferInfo;
 import org.apache.hyracks.dataflow.std.buffermanager.EnumFreeSlotPolicy;
 import org.apache.hyracks.dataflow.std.buffermanager.FrameFreeSlotPolicyFactory;
+import org.apache.hyracks.dataflow.std.buffermanager.IBrokerConduit;
+import org.apache.hyracks.dataflow.std.buffermanager.MemoryBrokerFactory;
+import org.apache.hyracks.dataflow.std.buffermanager.MemoryStatus;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFrameMemoryManager;
 import org.apache.hyracks.dataflow.std.buffermanager.VariableFramePool;
 import org.apache.logging.log4j.LogManager;
@@ -80,20 +82,22 @@ public class NestedLoopJoin {
     //added flag to check victim
     private final VariableFramePool framePool;
     private int drainCount = 0;
-    //broker simulation state
-    private final long brokerSeed = System.nanoTime() ^ System.identityHashCode(this);
-    private final Random brokerRnd = new Random(brokerSeed);
+    //broker connection (Ameen's abstraction): the operator reaches the broker ONLY through its buffer
+    //manager (IBrokerConduit, a pure conduit that never spills or releases by itself); the policy
+    //(none/random/periodic/scripted/distribution) is chosen at runtime by MemoryBrokerFactory
+    //(-Dhyracks.sort.broker=...), so one jar covers every experiment arm.
+    private final IBrokerConduit broker;
+    private final String brokerPolicy = System.getProperty("hyracks.sort.broker", "random");
     private int victimCount = 0; // checkpoint-2 victimizations
     private int grantCount = 0;
     private int rejectCount = 0;
     private int originalBudgetBytes;// growth cap reference
     private int frameInterval = 100;
     private int frameCounter = 0;
-    // BENCHMARK KNOBS: set manually per run config (see benchmark matrix), then rebuild. 0 = off.
-    private int cp1VictimPercent = 0; // mid-fill victim chance, rolled every frameInterval frames
-    private int cp2VictimPercent = 0; // overflow victim chance, rolled once per overflow
-    private int grantPercent = 0; // grow-grant chance when not a victim at overflow
+    // BENCHMARK KNOBS: the victim/grant/spill DECISIONS moved into the broker policy (MemoryBrokerFactory);
+    // what stays here is operator mechanism only.
     private int grantCapBytes = 64 * 1024 * 1024; // grant ceiling; set to ~dataset size (0 = classic 4x original)
+    private long pendingReleaseBytes = 0; // the broker's demanded amount for a CP2-victim / CP3 whole-block serve
     // BENCHMARK METRICS (reported in SUMMARY)
     private long sFrameReads = 0; // S frames read back from the run file (disk contact incl. replay)
     private long matchCount = 0; // joined pairs appended (replay included) — the true result cardinality
@@ -114,7 +118,6 @@ public class NestedLoopJoin {
     private boolean cp3SpillJustHappened = false; // signals the post-drain serve
     private boolean cp3Replaying = false; // skip-mode flag (replaces a skip parameter)
     private int cp3SpillCount = 0;
-    private int cp3VictimPercent = 0; // mid-drain spill chance per inner-frame boundary (0 = off)
     // BUCKETED RELEASE: give back memory at frame granularity instead of all-or-half.
     // false = original behavior (idle-only takes; CP3 spills the WHOLE block and aborts the scan).
     // true  = releases also shrink unallocated headroom, and CP3 spills ONLY the frames needed
@@ -156,8 +159,14 @@ public class NestedLoopJoin {
         //changed for testing memory changes
         this.framePool = new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes);
         this.originalBudgetBytes = outerBufferMngrMemBudgetInBytes;
-        this.outerBufferMngr = new VariableFrameMemoryManager(framePool, FrameFreeSlotPolicyFactory
-                .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
+        // [Ameen abstraction] the buffer manager doubles as the operator's single broker contact:
+        // a pure conduit that relays MemoryStatus/commands and never spills or releases by itself.
+        AdaptiveVariableFrameMemoryManager adaptiveMngr = new AdaptiveVariableFrameMemoryManager(framePool,
+                FrameFreeSlotPolicyFactory.createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT,
+                        outerBufferMngrMemBudgetInFrames),
+                MemoryBrokerFactory.create());
+        this.outerBufferMngr = adaptiveMngr;
+        this.broker = adaptiveMngr;
 
         this.isLeftOuter = isLeftOuter;
         if (isLeftOuter) {
@@ -203,27 +212,41 @@ public class NestedLoopJoin {
     }
 
     /**
-     added for testing behaviour of a randomly assigning broker
+     adapted to Ameen's broker abstraction: the coin flips moved into the broker policy
+     (RandomMemoryBroker etc.); the operator only reports status and obeys signed-frame commands.
      */
 
-    /** One coin flip: true with the given percent chance (0 = never, 100 = always). */
-    private boolean coin(int percent) {
-        return percent > 0 && brokerRnd.nextInt(100) < percent;
+    /** frames -> bytes at the pool's uniform frame size (the broker speaks frames, the pool bytes). */
+    private long framesToBytes(long frames) {
+        return frames * framePool.getMinFrameSize();
     }
 
-    /** Victim action: release half of the OUTER (R) pool's current budget, if the pool keeps its floor.
-     *  Response time is decision -> released: for CP1/CP2 the decision is this call; for a CP3 serve
-     *  the decision was the spill (stamped in cp3RequestNanos), so the block write is part of the wait. */
-    private void releaseHalfOfOuterBudget(boolean servingCP3) {
+    /** Three-tier supply curve reported to the broker (easy + medium + hard == current budget frames):
+     *  easy = idle frames + never-allocated headroom (instant, free to give); medium = live frames the
+     *  bucketed path could spill mid-scan (~ms plus a deferred replay); hard = the pool floor. */
+    private MemoryStatus buildStatus() {
+        long budgetFrames = framePool.getMemoryBudgetBytes() / framePool.getMinFrameSize();
+        long liveFrames = outerBufferMngr.getNumFrames();
+        long medium = bucketedRelease ? Math.max(0, liveFrames - MIN_POOL_FRAMES) : 0;
+        long hard = liveFrames - medium;
+        long easy = Math.max(0, budgetFrames - liveFrames);
+        return new MemoryStatus(easy, medium, hard);
+    }
+
+    /** Victim action: release the broker-demanded bytes from the OUTER (R) pool, clamped so the pool
+     *  keeps its floor. Response time is decision -> released: for CP1/CP2 the decision is this call;
+     *  for a CP3 serve the decision was the spill (stamped in cp3RequestNanos), so the block write is
+     *  part of the wait. */
+    private void releaseOuterMemory(long requestBytes, boolean servingCP3) {
         long t0 = System.nanoTime();
         int current = framePool.getMemoryBudgetBytes();
-        int half = current / 2;
-        if (current - half >= MIN_POOL_FRAMES * framePool.getMinFrameSize()) {
-            int got = framePool.takeUnusedMemory(half);
+        int ask = (int) Math.min(requestBytes, current - (long) MIN_POOL_FRAMES * framePool.getMinFrameSize());
+        if (ask > 0) {
+            int got = framePool.takeUnusedMemory(ask);
             int headroom = 0;
-            if (bucketedRelease && got < half) {
+            if (bucketedRelease && got < ask) {
                 // bucketed tier 2: budget never allocated into frames costs nothing to surrender
-                headroom = framePool.shrinkUnallocated(half - got);
+                headroom = framePool.shrinkUnallocated(ask - got);
                 got += headroom;
             }
             victimCount++;
@@ -234,21 +257,22 @@ public class NestedLoopJoin {
                 cp12RespNanosTotal += System.nanoTime() - t0;
                 cp12RespEvents++;
             }
-            LOGGER.info("NLJ-BROKER drain#{} VICTIM releasing half of outer budget: asked={} took={} (headroom={}) capNow={}",
-                    drainCount, half, got, headroom, framePool.getMemoryBudgetBytes());
+            LOGGER.info("NLJ-BROKER drain#{} VICTIM releasing outer budget: asked={} took={} (headroom={}) capNow={}",
+                    drainCount, ask, got, headroom, framePool.getMemoryBudgetBytes());
         } else {
             LOGGER.info("NLJ-BROKER drain#{} VICTIM-DECLINED cap={} at pool floor", drainCount, current);
         }
     }
 
-    /** Grow request: double (capped at 4x original) or rejected. Returns whether granted. */
-    private boolean askBrokerForMore() {
+    /** Grow by the broker's grant (+N frames), clamped to the ceiling. Returns whether the cap grew. */
+    private boolean growBudget(long grantedFrames) {
         int current = framePool.getMemoryBudgetBytes();
-        int ceiling = grantCapBytes > 0 ? grantCapBytes : originalBudgetBytes * 4;
-        if (coin(grantPercent) && current * 2 <= ceiling) {
-            framePool.updateBudget(current * 2);
+        long ceiling = grantCapBytes > 0 ? grantCapBytes : (long) originalBudgetBytes * 4;
+        long target = Math.min(current + framesToBytes(grantedFrames), ceiling);
+        if (target > current) {
+            framePool.updateBudget((int) target);
             grantCount++;
-            LOGGER.info("NLJ-BROKER drain#{} GRANTED {} -> {}", drainCount, current, current * 2);
+            LOGGER.info("NLJ-BROKER drain#{} GRANTED {} -> {}", drainCount, current, (int) target);
             return true;
         }
         rejectCount++;
@@ -257,11 +281,22 @@ public class NestedLoopJoin {
     }
 
     //helper functions added for cp3
-    private boolean shouldCP3Spill(int innerFramesProcessed) {
+    /** CP3 gate: cheap guards first, then a status report and a local read of the broker-set reclaim
+     *  demand. Returns the demanded frames (0 = no spill); the demand IS the bucket size (cut-to-order). */
+    private int cp3ReclaimDemandFrames(int innerFramesProcessed) {
+        if (isLeftOuter || cp3Replaying || cp3SpillWriters.size() >= cp3MaxSpills || innerFramesProcessed <= 0) {
+            return 0;
+        }
+        broker.reportStatus(buildStatus());
+        long reclaim = broker.getReclaimDemand();
+        if (reclaim >= 0) {
+            return 0;
+        }
         int current = framePool.getMemoryBudgetBytes();
-        return !isLeftOuter && !cp3Replaying && cp3SpillWriters.size() < cp3MaxSpills && innerFramesProcessed > 0
-                && current - current / 2 >= MIN_POOL_FRAMES * framePool.getMinFrameSize() // don't spill for a take the floor would decline
-                && coin(cp3VictimPercent);
+        if (current - framesToBytes(-reclaim) < (long) MIN_POOL_FRAMES * framePool.getMinFrameSize()) {
+            return 0; // don't spill for a take the floor would decline
+        }
+        return (int) -reclaim;
     }
 
     /** Shared drain epilogue: count, reset, and serve any pending release (CP2 victim and/or CP3 spill). */
@@ -274,7 +309,10 @@ public class NestedLoopJoin {
             releaseMemory = true; // CP3's immediate serve rides this path
         }
         if (releaseMemory) {
-            releaseHalfOfOuterBudget(servingCP3);
+            // serve the broker's demanded amount (CP2 victim / CP3 whole-block); half-budget fallback
+            long bytes = pendingReleaseBytes > 0 ? pendingReleaseBytes : framePool.getMemoryBudgetBytes() / 2;
+            pendingReleaseBytes = 0;
+            releaseOuterMemory(bytes, servingCP3);
         }
     }
 
@@ -285,12 +323,21 @@ public class NestedLoopJoin {
         }
         frameCounter++;
         // CHECKPOINT 1: R still filling — give-up side ONLY
-        if (frameCounter % frameInterval == 0 && coin(cp1VictimPercent)) {
-            releaseHalfOfOuterBudget(false);
+        // [Ameen abstraction] every frameInterval frames: fire-and-forget status report, then a local
+        // non-blocking read of the broker-set reclaim demand (0 = not a victim, -N = give N frames back)
+        if (frameCounter % frameInterval == 0) {
+            broker.reportStatus(buildStatus());
+            long reclaim = broker.getReclaimDemand();
+            if (reclaim < 0) {
+                releaseOuterMemory(framesToBytes(-reclaim), false);
+            }
         }
         if (outerBufferMngr.insertFrame(outerBuffer) < 0) {
-            // CHECKPOINT 2: out of memory — victim check FIRST
-            if (coin(cp2VictimPercent)) {
+            // CHECKPOINT 2: out of memory — one SYNCHRONOUS requestMore decides victim/grant/denied
+            long resp = broker.requestMore(buildStatus());
+            if (resp < 0) {
+                // victim check FIRST: drain, then the epilogue releases the demanded frames (full yield)
+                pendingReleaseBytes = framesToBytes(-resp);
                 //                    multiBlockJoin(writer);
                 //                    drainCount++;
                 //                    outerBufferMngr.reset();
@@ -298,9 +345,14 @@ public class NestedLoopJoin {
                 multiBlockJoin(writer);
                 resetAfterDrain(true);
             } else {
-                // not victim: ask for more BEFORE spilling — a grant makes the drain unnecessary
-                if (askBrokerForMore() && outerBufferMngr.insertFrame(outerBuffer) >= 0) {
+                // not victim: the grant came BEFORE spilling — a grant makes the drain unnecessary
+                if (resp > 0 && growBudget(resp) && outerBufferMngr.insertFrame(outerBuffer) >= 0) {
                     return; // grant absorbed the frame: S-scan avoided
+                }
+                if (resp == 0) {
+                    rejectCount++;
+                    LOGGER.info("NLJ-BROKER drain#{} REJECTED cap stays {}", drainCount,
+                            framePool.getMemoryBudgetBytes());
                 }
                 //                    multiBlockJoin(writer);              // rejected -> spill as usual
                 //                    drainCount++;
@@ -375,16 +427,17 @@ public class NestedLoopJoin {
                     innerFramesProcessed++;
                     continue;
                 }
-                if (shouldCP3Spill(innerFramesProcessed)) {
-                    int bucketFrames = (framePool.getMemoryBudgetBytes() / 2) / framePool.getMinFrameSize();
-                    if (bucketedRelease && bucketFrames > 0 && bucketFrames < outerBufferFrameCount) {
-                        // CHECKPOINT 3, bucketed: spill ONLY the requested frames (one bucket = one
-                        // debt), free them right here, and keep scanning the surviving frames
+                int bucketFrames = cp3ReclaimDemandFrames(innerFramesProcessed);
+                if (bucketFrames > 0) {
+                    if (bucketedRelease && bucketFrames < outerBufferFrameCount) {
+                        // CHECKPOINT 3, bucketed: spill ONLY the demanded frames (one bucket = one
+                        // debt, cut-to-order), free them right here, and keep scanning the survivors
                         outerBufferFrameCount =
                                 spillBucketMidScan(bucketFrames, innerFramesProcessed, outerBufferFrameCount);
                     } else {
                         // CHECKPOINT 3, original: preserve the whole block, abort;
-                        // the caller's resetAfterDrain() frees and releases immediately
+                        // the caller's resetAfterDrain() frees and releases the demanded amount
+                        pendingReleaseBytes = framesToBytes(bucketFrames);
                         spillCurrentOuterBlock(innerFramesProcessed);
                         return;
                     }
@@ -581,11 +634,11 @@ public class NestedLoopJoin {
         }
         appender.write(writer, true);
         LOGGER.info(
-                "NLJ-BROKER SUMMARY seed={} knobs[cp1={} cp2={} grant={} cp3={} maxSpills={} bucketed={}] drains={} victims={} "
+                "NLJ-BROKER SUMMARY policy={} knobs[maxSpills={} bucketed={}] drains={} victims={} "
                         + "granted={} rejected={} cp3Spills={} sFrameReads={} matches={} "
                         + "outerFramesIn={} outerBytesIn={} innerRunFileBytes={} finalCap={} totalBytesGivenUp={} "
                         + "avgRespMicrosCp12={} (n={}) avgRespMicrosCp3={} (n={})",
-                brokerSeed, cp1VictimPercent, cp2VictimPercent, grantPercent, cp3VictimPercent, cp3MaxSpills,
+                brokerPolicy, cp3MaxSpills,
                 bucketedRelease, drainCount, victimCount, grantCount, rejectCount, cp3SpillCount, sFrameReads,
                 matchCount, frameCounter, (long) frameCounter * framePool.getMinFrameSize(),
                 runFileWriter.getFileSize(),
