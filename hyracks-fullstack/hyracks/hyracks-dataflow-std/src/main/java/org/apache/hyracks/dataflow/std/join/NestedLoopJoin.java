@@ -299,7 +299,7 @@ public class NestedLoopJoin {
         return (int) -reclaim;
     }
 
-    /** Shared drain epilogue: count, reset, and serve any pending release (CP2 victim and/or CP3 spill). */
+    /** Shared drain: count, reset, and serve any pending release (CP2 victim and/or CP3 spill). */
     private void resetAfterDrain(boolean releaseMemory) throws HyracksDataException {
         drainCount++;
         outerBufferMngr.reset();
