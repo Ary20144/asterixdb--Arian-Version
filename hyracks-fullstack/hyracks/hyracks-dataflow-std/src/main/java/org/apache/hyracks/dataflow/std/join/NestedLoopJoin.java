@@ -91,12 +91,12 @@ public class NestedLoopJoin {
     private int victimCount = 0; // victim requests served: fill-time, block-boundary, and mid-pass
     private int grantCount = 0;
     private int rejectCount = 0;
-    private int originalBudgetBytes;// growth cap reference
     private int victimCheckInterval = 100; // the paper's x: victim check every x R frames (was frameInterval)
     private int frameCounter = 0;
     // BENCHMARK KNOBS: the victim/grant/spill DECISIONS moved into the broker policy (MemoryBrokerFactory);
-    // what stays here is operator mechanism only.
-    private int grantCapBytes = 64 * 1024 * 1024; // grant ceiling; set to ~dataset size (0 = classic 4x original)
+    // what stays here is operator mechanism only. No caps: the grant ceiling (was grantCapBytes) and the
+    // release-count cap (was maxBucketReleases) are removed; the operator serves whatever the broker
+    // decides, and the only remaining limits are the one-frame correctness floor and the pool's int budget.
     private long pendingReleaseBytes = 0; // the broker's demanded amount for a boundary-victim / whole-block-spill serve
     // BENCHMARK METRICS (reported in SUMMARY)
     private long sFrameReads = 0; // S frames read back from the run file (disk contact incl. replay)
@@ -107,13 +107,12 @@ public class NestedLoopJoin {
     private int midPassRespEvents = 0; // (was cp3RespEvents)
     private long midPassRequestNanos = 0; // stamp of the most recent mid-pass victim decision (was cp3RequestNanos)
     // MID-PASS RELEASE (was CHECKPOINT 3): release R buckets mid-S-pass so memory frees immediately.
-    // Multiple releases per join (bounded by maxBucketReleases); inner joins only
+    // Multiple releases per join, unbounded; inner joins only
     // (LOJ needs outerMatchLOJ state spilled too — future work). Each release parks one
     // (file, s_resume_idx) debt: bucket_k x S[j_k..end), repaid independently in completeJoin.
     private IHyracksJobletContext jobletContext; // promoted from ctor param (spill file creation)
     private final List<RunFileWriter> releasedBucketWriters = new ArrayList<>(); // run files of released buckets (was cp3SpillWriters)
     private final List<Integer> rBucketStatus = new ArrayList<>(); // the paper's status array: s_resume_idx per released bucket (was cp3ResumePoints)
-    private int maxBucketReleases = 10; // bounds deferred work + disk (was cp3MaxSpills)
     private int replaySResumeIdx = 0; // s_resume_idx of the bucket CURRENTLY replaying (was cp3ResumeInnerFrames)
     private boolean wholeBlockSpillPending = false; // whole-block spill awaiting its post-S-pass serve (was cp3SpillJustHappened)
     private boolean replaying = false; // skip-mode flag, matches the paper's algorithm (was cp3Replaying)
@@ -160,7 +159,6 @@ public class NestedLoopJoin {
         //                        .createFreeSlotPolicy(EnumFreeSlotPolicy.LAST_FIT, outerBufferMngrMemBudgetInFrames));
         //changed for testing memory changes
         this.framePool = new VariableFramePool(jobletContext, outerBufferMngrMemBudgetInBytes);
-        this.originalBudgetBytes = outerBufferMngrMemBudgetInBytes;
         // [Ameen abstraction] the buffer manager doubles as the operator's single broker contact:
         // a pure conduit that relays MemoryStatus/commands and never spills or releases by itself.
         AdaptiveVariableFrameMemoryManager adaptiveMngr = new AdaptiveVariableFrameMemoryManager(framePool,
@@ -266,11 +264,11 @@ public class NestedLoopJoin {
         }
     }
 
-    /** Grow by the broker's grant (+N frames), clamped to the ceiling. Returns whether the cap grew. */
+    /** Grow by the broker's grant (+N frames), uncapped. Returns whether the cap grew. The only clamp
+     *  is the pool's int byte budget, a mechanical limit of the implementation rather than a policy cap. */
     private boolean growBudget(long grantedFrames) {
         int current = framePool.getMemoryBudgetBytes();
-        long ceiling = grantCapBytes > 0 ? grantCapBytes : (long) originalBudgetBytes * 4;
-        long target = Math.min(current + framesToBytes(grantedFrames), ceiling);
+        long target = Math.min(current + framesToBytes(grantedFrames), Integer.MAX_VALUE);
         if (target > current) {
             framePool.updateBudget((int) target);
             grantCount++;
@@ -287,7 +285,7 @@ public class NestedLoopJoin {
      *  a local read of the broker-set reclaim demand. Returns the demanded frames (0 = not a victim);
      *  the demand IS the bucket size (cut-to-order). */
     private int midPassVictimCheck(int sResumeIdx) {
-        if (isLeftOuter || replaying || releasedBucketWriters.size() >= maxBucketReleases || sResumeIdx <= 0) {
+        if (isLeftOuter || replaying || sResumeIdx <= 0) {
             return 0;
         }
         broker.reportStatus(buildStatus());
@@ -494,8 +492,8 @@ public class NestedLoopJoin {
         rBucketStatus.add(sResumeIdx);
         wholeBlockSpillPending = true;
         bucketReleaseCount++;
-        LOGGER.info("NLJ-BROKER sPass#{} BLOCK-SPILL #{} of max {}: {} frames after {} inner frames; rest deferred",
-                sPassCount, releasedBucketWriters.size(), maxBucketReleases, n, sResumeIdx);
+        LOGGER.info("NLJ-BROKER sPass#{} BLOCK-SPILL #{}: {} frames after {} inner frames; rest deferred",
+                sPassCount, releasedBucketWriters.size(), n, sResumeIdx);
     }
 
     /** Bucket release, cut-to-order (was spillBucketMidScan): spill only the LAST nFrames of the pinned block
@@ -527,8 +525,8 @@ public class NestedLoopJoin {
         midPassRespNanosTotal += System.nanoTime() - midPassRequestNanos;
         midPassRespEvents++;
         LOGGER.info(
-                "NLJ-BROKER sPass#{} BUCKET-RELEASE #{} of max {}: spilled {} frames after {} inner frames, freed={} capNow={}; scan continues on {} frames",
-                sPassCount, releasedBucketWriters.size(), maxBucketReleases, nFrames, sResumeIdx, freed,
+                "NLJ-BROKER sPass#{} BUCKET-RELEASE #{}: spilled {} frames after {} inner frames, freed={} capNow={}; scan continues on {} frames",
+                sPassCount, releasedBucketWriters.size(), nFrames, sResumeIdx, freed,
                 framePool.getMemoryBudgetBytes(), frameCount - nFrames);
         return frameCount - nFrames;
     }
@@ -641,11 +639,11 @@ public class NestedLoopJoin {
         }
         appender.write(writer, true);
         LOGGER.info(
-                "NLJ-BROKER SUMMARY policy={} knobs[maxBucketReleases={} bucketBased={}] sPasses={} victims={} "
+                "NLJ-BROKER SUMMARY policy={} knobs[bucketBased={}] sPasses={} victims={} "
                         + "granted={} rejected={} bucketReleases={} sFrameReads={} matches={} "
                         + "outerFramesIn={} outerBytesIn={} innerRunFileBytes={} finalCap={} totalBytesGivenUp={} "
                         + "avgRespMicrosBoundary={} (n={}) avgRespMicrosMidPass={} (n={})",
-                brokerPolicy, maxBucketReleases,
+                brokerPolicy,
                 bucketBased, sPassCount, victimCount, grantCount, rejectCount, bucketReleaseCount, sFrameReads,
                 matchCount, frameCounter, (long) frameCounter * framePool.getMinFrameSize(),
                 runFileWriter.getFileSize(),
