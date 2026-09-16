@@ -285,7 +285,9 @@ public class NestedLoopJoin {
      *  a local read of the broker-set reclaim demand. Returns the demanded frames (0 = not a victim);
      *  the demand IS the bucket size (cut-to-order). */
     private int midPassVictimCheck(int sResumeIdx) {
-        if (isLeftOuter || replaying || sResumeIdx <= 0) {
+        // consult the broker every victimCheckInterval S frames (the paper's x, same cadence as the
+        // R side) so the victim probability means "per consultation", not "per S frame"
+        if (isLeftOuter || replaying || sResumeIdx <= 0 || sResumeIdx % victimCheckInterval != 0) {
             return 0;
         }
         broker.reportStatus(buildStatus());

@@ -92,7 +92,9 @@ public class MemoryBrokerFactory {
             }
             case "random":
             default:
-                return new RandomMemoryBroker(doubleProp("victimProbability", 0.3), longProp("seed", 0));
+                // [NLJ experiments] knob 1 = victimProbability, knob 2 = victimFraction (release size)
+                return new RandomMemoryBroker(doubleProp("victimProbability", 0.3),
+                        doubleProp("victimFraction", 0.5), longProp("seed", 0));
         }
     }
 

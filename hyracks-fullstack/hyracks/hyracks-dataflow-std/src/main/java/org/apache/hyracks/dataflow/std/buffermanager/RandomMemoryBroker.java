@@ -29,18 +29,31 @@ import java.util.Random;
 public class RandomMemoryBroker implements IMemoryBroker {
 
     private final double victimProbability;
+    // [NLJ experiments, knob 2] fraction of the CURRENT budget demanded per victim event
+    // (-Dhyracks.sort.broker.victimFraction, default 0.5 = the original halving behavior).
+    private final double victimFraction;
     private final Random random;
 
     public RandomMemoryBroker(double victimProbability, long seed) {
+        this(victimProbability, 0.5, seed); // original behavior: demand half
+    }
+
+    public RandomMemoryBroker(double victimProbability, double victimFraction, long seed) {
         this.victimProbability = victimProbability;
+        this.victimFraction = victimFraction;
         this.random = new Random(seed); // fixed seed --> reproducible experiment
+    }
+
+    /** knob 2: -N frames = victimFraction of the current budget, at least one frame. */
+    private long victimDemand(MemoryStatus status) {
+        return -Math.max(1, Math.round(currentBudgetFrames(status) * victimFraction));
     }
 
     @Override
     public long onStatusUpdate(MemoryStatus status) {
-        // ignores status for now; randomly victimize by reclaiming half the current budget.
+        // ignores status for now; randomly victimize by reclaiming victimFraction of the budget.
         if (random.nextDouble() < victimProbability) {
-            return -(currentBudgetFrames(status) / 2); // -N: give N frames back
+            return victimDemand(status); // -N: give N frames back
         }
         return 0; // not a victim
     }
@@ -50,7 +63,7 @@ public class RandomMemoryBroker implements IMemoryBroker {
         // ignores status for now; reproduces the old victim / grant / denied outcomes as signed frames.
         long budget = currentBudgetFrames(status);
         if (random.nextDouble() < victimProbability) {
-            return -(budget / 2); // "you're actually a victim": give half back
+            return victimDemand(status); // "you're actually a victim"
         }
         if (random.nextDouble() < (1.0 - victimProbability)) {
             return budget; // grant: +budget frames (doubles the budget)
